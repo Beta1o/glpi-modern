@@ -47,11 +47,14 @@ curl http://127.0.0.1:8090/api/v1/metrics
 ## Migration Direction
 
 1. Keep the existing PHP GLPI fork runnable while new bounded services are built.
-2. Move high-traffic read paths first: assets, tickets, users, inventory events.
-3. Put PostgreSQL behind repository interfaces and Redis behind cache/queue ports.
-4. Add OpenID Connect, audit logging, and service-to-service authorization before
+2. Check the old GLPI workflow before replacing any feature, then match parity
+   and add enhancements.
+3. Track parity in [`docs/FEATURE_PARITY.md`](docs/FEATURE_PARITY.md).
+4. Move high-traffic read paths first: assets, tickets, users, inventory events.
+5. Put PostgreSQL behind repository interfaces and Redis behind cache/queue ports.
+6. Add OpenID Connect, audit logging, and service-to-service authorization before
    exposing multi-user write flows.
-5. Replace GLPI modules incrementally, with compatibility importers for legacy
+7. Replace GLPI modules incrementally, with compatibility importers for legacy
    tables and attachments.
 
 ## Security Defaults
