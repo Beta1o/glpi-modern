@@ -97,6 +97,10 @@ class LegacyGlpiStore implements Store {
     return rows.map(mapTicketRow);
   }
 
+  async getTicket(id: number): Promise<ReturnType<typeof mapTicketRow>> {
+    return await this.getTicketRow(normalizeLegacyId(id), this.pool);
+  }
+
   async listUsers(): Promise<GlpiUser[]> {
     const [rows] = await this.pool.query<UserRow[]>(
       `SELECT id, name, realname, firstname
@@ -163,7 +167,7 @@ class LegacyGlpiStore implements Store {
       }
 
       await connection.commit();
-      return await this.getTicket(ticketId, connection);
+      return await this.getTicketRow(ticketId, connection);
     } catch (error) {
       await connection.rollback();
       throw error;
@@ -217,7 +221,7 @@ class LegacyGlpiStore implements Store {
       );
     }
 
-    return await this.getTicket(ticketId, this.pool);
+    return await this.getTicketRow(ticketId, this.pool);
   }
 
   async deleteTicket(id: number): Promise<void> {
@@ -238,7 +242,7 @@ class LegacyGlpiStore implements Store {
         WHERE id = ?`,
       [ticketId]
     );
-    return await this.getTicket(ticketId, this.pool);
+    return await this.getTicketRow(ticketId, this.pool);
   }
 
   async purgeTicket(id: number): Promise<void> {
@@ -305,7 +309,7 @@ class LegacyGlpiStore implements Store {
     await this.pool.end();
   }
 
-  private async getTicket(
+  private async getTicketRow(
     id: number,
     connection: Pool | PoolConnection
   ): Promise<ReturnType<typeof mapTicketRow>> {

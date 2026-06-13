@@ -29,9 +29,8 @@ Captured reference pages from the current local install:
 
 ## Shared Layout Requirements
 
-- Use GLPI's existing public asset stack: `base.css`, `tabler.css`, `glpi.scss`,
-  `core_palettes.scss`, `base.js`, `common.js`, Vue build assets, Tabler icons,
-  and GLPI logos.
+- Recreate GLPI's visual style in the new application. Do not depend on the old
+  PHP runtime or old GLPI asset bundles in production routes.
 - Keep old menu labels and old URLs under `/front/...`.
 - Keep old status, priority, ticket type, and actor constants exactly:
   - ticket status: `1 New`, `2 Assigned`, `3 Planned`, `4 Waiting`, `5 Solved`, `6 Closed`

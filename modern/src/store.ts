@@ -98,6 +98,7 @@ export type ParsedAssetId = {
 export type Store = {
   listAssets(): Promise<Asset[]>;
   listTickets(): Promise<Ticket[]>;
+  getTicket(id: number): Promise<Ticket>;
   listUsers(): Promise<GlpiUser[]>;
   createTicket(input: NewTicketInput): Promise<Ticket>;
   updateTicket(id: number, input: UpdateTicketInput): Promise<Ticket>;

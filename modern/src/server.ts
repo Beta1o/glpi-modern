@@ -3,11 +3,18 @@ import { readFile } from "node:fs/promises";
 import { extname, isAbsolute, join, normalize, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createLegacyGlpiStore } from "./legacy-glpi-store.ts";
+import {
+  renderCentralPage,
+  renderComputerListPage,
+  renderLoginPage,
+  renderTicketFormPage,
+  renderTicketListPage,
+  renderUserListPage
+} from "./pages.ts";
 
 const host = process.env.HOST || "127.0.0.1";
 const port = Number.parseInt(process.env.PORT || "8090", 10);
 const publicDir = fileURLToPath(new URL("../public/", import.meta.url));
-const legacyPublicDir = fileURLToPath(new URL("../../public/", import.meta.url));
 const maxBodyBytes = 64 * 1024;
 const store = await createLegacyGlpiStore();
 
@@ -60,6 +67,27 @@ process.on("SIGINT", shutdown);
 async function route(request: IncomingMessage, response: ServerResponse): Promise<void> {
   const method = request.method || "GET";
   const url = new URL(request.url || "/", `http://${request.headers.host || `${host}:${port}`}`);
+
+  if ((url.pathname === "/" || url.pathname === "/index.html") && method === "GET") {
+    return sendHtml(request, response, 200, renderLoginPage());
+  }
+
+  if (url.pathname === "/front/login.php" && method === "POST") {
+    const form = await readForm(request);
+    const login = String(form.get("login_name") || "").trim();
+    const users = await store.listUsers();
+    if (!users.some((user) => user.login === login)) {
+      return sendHtml(request, response, 403, renderLoginPage("Invalid login"));
+    }
+
+    response.setHeader("Set-Cookie", "glpi_modern_session=1; Path=/; HttpOnly; SameSite=Lax");
+    return redirect(response, String(form.get("redirect") || "/front/central.php") || "/front/central.php");
+  }
+
+  if (url.pathname === "/front/logout.php") {
+    response.setHeader("Set-Cookie", "glpi_modern_session=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax");
+    return redirect(response, "/");
+  }
 
   if (url.pathname === "/healthz") {
     return sendJson(request, response, 200, { status: "ok" });
@@ -120,7 +148,11 @@ async function route(request: IncomingMessage, response: ServerResponse): Promis
   }
 
   if (isLegacyPageRoute(url.pathname)) {
-    return serveStatic(request, response, "/index.html");
+    if (!isLoggedIn(request)) {
+      return redirect(response, `/?redirect=${encodeURIComponent(url.pathname + url.search)}`);
+    }
+
+    return serveLegacyPage(request, response, url);
   }
 
   if (method !== "GET" && method !== "HEAD") {
@@ -128,6 +160,72 @@ async function route(request: IncomingMessage, response: ServerResponse): Promis
   }
 
   return serveStatic(request, response, url.pathname);
+}
+
+async function serveLegacyPage(
+  request: IncomingMessage,
+  response: ServerResponse,
+  url: URL
+): Promise<void> {
+  if (url.pathname === "/front/central.php") {
+    return sendHtml(request, response, 200, renderCentralPage(await store.metrics()));
+  }
+
+  if (url.pathname === "/front/ticket.php") {
+    return sendHtml(request, response, 200, renderTicketListPage(await store.listTickets()));
+  }
+
+  if (url.pathname === "/front/ticket.form.php") {
+    if (request.method === "POST") {
+      await handleTicketForm(url, request, response);
+      return;
+    }
+
+    const id = Number.parseInt(url.searchParams.get("id") || "", 10);
+    const ticket = Number.isInteger(id) && id > 0 ? await store.getTicket(id) : null;
+    return sendHtml(request, response, 200, renderTicketFormPage(ticket, await store.listUsers()));
+  }
+
+  if (url.pathname === "/front/computer.php") {
+    return sendHtml(request, response, 200, renderComputerListPage(await store.listAssets()));
+  }
+
+  if (url.pathname === "/front/user.php") {
+    return sendHtml(request, response, 200, renderUserListPage(await store.listUsers()));
+  }
+
+  throw httpError(404, "NOT_FOUND", "Page not found");
+}
+
+async function handleTicketForm(
+  url: URL,
+  request: IncomingMessage,
+  response: ServerResponse
+): Promise<void> {
+  const form = await readForm(request);
+  const id = Number.parseInt(url.searchParams.get("id") || "", 10);
+  const action = String(form.get("_action") || "");
+
+  if (Number.isInteger(id) && id > 0) {
+    if (action === "delete") {
+      await store.deleteTicket(id);
+      return redirect(response, "/front/ticket.php");
+    }
+    if (action === "restore") {
+      await store.restoreTicket(id);
+      return redirect(response, `/front/ticket.form.php?id=${id}`);
+    }
+    if (action === "purge") {
+      await store.purgeTicket(id);
+      return redirect(response, "/front/ticket.php");
+    }
+
+    await store.updateTicket(id, formToObject(form));
+    return redirect(response, `/front/ticket.form.php?id=${id}`);
+  }
+
+  const ticket = await store.createTicket(formToObject(form));
+  return redirect(response, `/front/ticket.form.php?id=${ticket.legacyId}`);
 }
 
 function isLegacyPageRoute(pathname: string): boolean {
@@ -147,15 +245,17 @@ function setBaseHeaders(response: ServerResponse): void {
   response.setHeader("Server", "glpi-modern");
 }
 
+function redirect(response: ServerResponse, location: string): void {
+  response.writeHead(302, { Location: location });
+  response.end();
+}
+
 async function serveStatic(
   request: IncomingMessage,
   response: ServerResponse,
   pathname: string
 ): Promise<void> {
-  const isLegacyAsset = pathname.startsWith("/legacy/");
-  const rootDir = isLegacyAsset ? legacyPublicDir : publicDir;
-  const requestPath = isLegacyAsset ? pathname.slice("/legacy".length) : pathname;
-  const filePath = resolveStaticPath(rootDir, requestPath);
+  const filePath = resolveStaticPath(publicDir, pathname);
   if (!filePath) {
     throw httpError(404, "NOT_FOUND", "File not found");
   }
@@ -235,6 +335,26 @@ async function readJson(request: IncomingMessage): Promise<Record<string, unknow
   }
 }
 
+async function readForm(request: IncomingMessage): Promise<URLSearchParams> {
+  const chunks: Buffer[] = [];
+  let received = 0;
+
+  for await (const chunk of request) {
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    received += buffer.byteLength;
+    if (received > maxBodyBytes) {
+      throw httpError(413, "PAYLOAD_TOO_LARGE", "Request body is too large");
+    }
+    chunks.push(buffer);
+  }
+
+  return new URLSearchParams(Buffer.concat(chunks).toString("utf8"));
+}
+
+function formToObject(form: URLSearchParams): Record<string, string> {
+  return Object.fromEntries(form.entries());
+}
+
 function sendJson(
   request: IncomingMessage,
   response: ServerResponse,
@@ -246,6 +366,27 @@ function sendJson(
     "Cache-Control": "no-store",
     "Content-Length": body.byteLength,
     "Content-Type": "application/json; charset=utf-8"
+  });
+
+  if (request.method === "HEAD") {
+    response.end();
+    return;
+  }
+
+  response.end(body);
+}
+
+function sendHtml(
+  request: IncomingMessage,
+  response: ServerResponse,
+  statusCode: number,
+  html: string
+): void {
+  const body = Buffer.from(html);
+  response.writeHead(statusCode, {
+    "Cache-Control": "no-store",
+    "Content-Length": body.byteLength,
+    "Content-Type": "text/html; charset=utf-8"
   });
 
   if (request.method === "HEAD") {
@@ -299,6 +440,10 @@ function getErrorCode(error: unknown, statusCode: number): string {
   }
 
   return statusCode >= 500 ? "INTERNAL_ERROR" : "REQUEST_ERROR";
+}
+
+function isLoggedIn(request: IncomingMessage): boolean {
+  return (request.headers.cookie || "").split(";").some((cookie) => cookie.trim() === "glpi_modern_session=1");
 }
 
 function shutdown(): void {
