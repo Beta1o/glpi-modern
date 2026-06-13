@@ -1,3 +1,24 @@
+# GLPI Modern Fork
+
+This branch starts a modernized GLPI project under [`modern/`](modern/). The
+first runnable slice uses Node.js with native TypeScript type stripping, a
+zero-dependency API service, a static operations UI, secure default headers,
+health checks, tests, and a PostgreSQL-ready schema.
+
+Run it locally:
+
+```sh
+cd modern
+npm start
+```
+
+Then open `http://127.0.0.1:8090/`.
+
+The upstream PHP GLPI code remains in this fork so the migration can happen
+incrementally instead of breaking the working application.
+
+---
+
 ![GLPI Logo](https://raw.githubusercontent.com/glpi-project/glpi/main/public/pics/logos/logo-GLPI-250-black.png)
 
 ![GLPI CI](https://github.com/glpi-project/glpi/workflows/GLPI%20CI/badge.svg?branch=9.5%2Fbugfixes)
