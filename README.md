@@ -1,9 +1,8 @@
 # GLPI Modern Fork
 
-This branch starts a modernized GLPI project under [`modern/`](modern/). The
-first runnable slice uses Node.js with native TypeScript type stripping, a
-zero-dependency API service, a static operations UI, secure default headers,
-health checks, tests, and a PostgreSQL-ready schema.
+This branch starts a technology migration of GLPI under [`modern/`](modern/).
+The goal is exact GLPI compatibility: same features, same workflows, same
+styles, same data behavior. Only the runtime technology changes.
 
 Run it locally:
 

@@ -4,6 +4,8 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>GLPI Modern</title>
+    <link rel="stylesheet" href="/legacy/lib/base.css">
+    <link rel="stylesheet" href="/legacy/lib/tabler.css">
     <link rel="stylesheet" href="/styles.css">
     <script src="/app.js" defer></script>
   </head>
@@ -13,22 +15,23 @@
         <div class="brand">
           <span class="brand-mark" aria-hidden="true">G</span>
           <span>
-            <strong>GLPI Modern</strong>
-            <small>Service desk</small>
+            <strong>GLPI</strong>
+            <small>Technology migration</small>
           </span>
         </div>
         <nav class="nav-list">
-          <a class="active" href="#dashboard">Dashboard</a>
-          <a href="#tickets">Tickets</a>
-          <a href="#assets">Assets</a>
-          <a href="#operations">Operations</a>
+          <a class="active" href="/front/central.php">Dashboard</a>
+          <a href="/front/ticket.php">Tickets</a>
+          <a href="/front/ticket.form.php">Create Ticket</a>
+          <a href="/front/computer.php">Computers</a>
+          <a href="/front/user.php">Users</a>
         </nav>
       </aside>
 
       <main class="workspace">
         <header class="topbar">
           <div>
-            <h1>Operations Overview</h1>
+            <h1>Standard Interface</h1>
             <p id="systemStatus">Checking service status</p>
           </div>
           <button id="refreshButton" type="button">Refresh</button>
@@ -48,6 +51,8 @@
                   <tr>
                     <th>Number</th>
                     <th>Title</th>
+                    <th>Requester</th>
+                    <th>Type</th>
                     <th>Priority</th>
                     <th>Status</th>
                   </tr>
@@ -59,7 +64,7 @@
 
           <form class="panel form-panel" id="ticketForm">
             <div class="panel-heading">
-              <h2>New Ticket</h2>
+              <h2>Create Ticket</h2>
             </div>
             <label>
               Title
@@ -67,15 +72,26 @@
             </label>
             <label>
               Requester
-              <input name="requester" autocomplete="off" minlength="2" maxlength="80" required>
+              <select name="requesterId" id="requesterSelect" required>
+                <option value="">Select requester</option>
+              </select>
+            </label>
+            <label>
+              Type
+              <select name="type">
+                <option value="1">Incident</option>
+                <option value="2">Request</option>
+              </select>
             </label>
             <label>
               Priority
               <select name="priority">
-                <option value="normal">Normal</option>
-                <option value="high">High</option>
-                <option value="urgent">Urgent</option>
-                <option value="low">Low</option>
+                <option value="3">Medium</option>
+                <option value="4">High</option>
+                <option value="5">Very high</option>
+                <option value="6">Major</option>
+                <option value="2">Low</option>
+                <option value="1">Very low</option>
               </select>
             </label>
             <label>
@@ -84,6 +100,10 @@
                 <option value="">Unassigned</option>
               </select>
             </label>
+            <label>
+              Content
+              <textarea name="content" maxlength="65000" rows="4"></textarea>
+            </label>
             <button type="submit">Create Ticket</button>
             <p class="form-message" id="formMessage" role="status"></p>
           </form>
@@ -91,7 +111,7 @@
 
         <section class="panel" id="assets">
           <div class="panel-heading">
-            <h2>Assets</h2>
+            <h2>Computers / Assets</h2>
             <span id="assetCount"></span>
           </div>
           <div class="asset-grid" id="assetGrid"></div>

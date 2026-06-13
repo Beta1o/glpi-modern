@@ -1,5 +1,6 @@
 const state = {
   assets: [],
+  users: [],
   tickets: [],
   metrics: null
 };
@@ -12,6 +13,7 @@ const elements = {
   formMessage: document.querySelector("#formMessage"),
   metrics: document.querySelector("#metrics"),
   refreshButton: document.querySelector("#refreshButton"),
+  requesterSelect: document.querySelector("#requesterSelect"),
   systemStatus: document.querySelector("#systemStatus"),
   ticketCount: document.querySelector("#ticketCount"),
   ticketRows: document.querySelector("#ticketRows")
@@ -28,8 +30,10 @@ elements.form.addEventListener("submit", async (event) => {
   const formData = new FormData(elements.form);
   const payload = {
     assetId: formData.get("assetId"),
+    content: formData.get("content"),
     priority: formData.get("priority"),
-    requester: formData.get("requester"),
+    requesterId: formData.get("requesterId"),
+    type: formData.get("type"),
     title: formData.get("title")
   };
 
@@ -54,18 +58,19 @@ loadData();
 
 async function loadData() {
   elements.systemStatus.textContent = "Loading";
-  const [metrics, assets, tickets, health] = await Promise.all([
+  const [metrics, assets, tickets, users] = await Promise.all([
     getJson("/api/v1/metrics"),
     getJson("/api/v1/assets"),
     getJson("/api/v1/tickets"),
-    getJson("/healthz")
+    getJson("/api/v1/users")
   ]);
 
   state.metrics = metrics;
   state.assets = assets.data;
   state.tickets = tickets.data;
+  state.users = users.data;
   render();
-  elements.systemStatus.textContent = health.status === "ok" ? "API healthy" : "API unavailable";
+  elements.systemStatus.textContent = "Connected to legacy GLPI database";
 }
 
 async function getJson(path) {
@@ -81,14 +86,15 @@ function render() {
   renderTickets();
   renderAssets();
   renderAssetOptions();
+  renderUserOptions();
 }
 
 function renderMetrics() {
   const metrics = [
     ["Assets", state.metrics.assets],
-    ["Online", state.metrics.onlineAssets],
+    ["Active assets", state.metrics.onlineAssets],
     ["Open tickets", state.metrics.openTickets],
-    ["Mean assignment", `${state.metrics.meanAssignmentMinutes}m`]
+    ["Users", state.metrics.users]
   ];
 
   elements.metrics.replaceChildren(...metrics.map(([label, value]) => {
@@ -108,15 +114,19 @@ function renderTickets() {
     row.innerHTML = `
       <td></td>
       <td></td>
+      <td></td>
+      <td></td>
       <td><span class="badge"></span></td>
       <td><span class="badge"></span></td>
     `;
     row.children[0].textContent = ticket.number;
     row.children[1].textContent = ticket.title;
-    row.children[2].querySelector("span").textContent = ticket.priority;
-    row.children[2].querySelector("span").classList.add(`priority-${ticket.priority}`);
-    row.children[3].querySelector("span").textContent = ticket.status;
-    row.children[3].querySelector("span").classList.add(`status-${ticket.status}`);
+    row.children[2].textContent = ticket.requester;
+    row.children[3].textContent = ticket.typeLabel;
+    row.children[4].querySelector("span").textContent = ticket.priorityLabel;
+    row.children[4].querySelector("span").classList.add(`priority-${ticket.priorityKey}`);
+    row.children[5].querySelector("span").textContent = ticket.statusLabel;
+    row.children[5].querySelector("span").classList.add(`status-${ticket.statusKey}`);
     return row;
   }));
 }
@@ -138,8 +148,8 @@ function renderAssets() {
     const spans = item.querySelectorAll("span");
     spans[0].textContent = `${asset.tag} / ${asset.site}`;
     spans[1].textContent = asset.owner;
-    spans[2].textContent = asset.status;
-    spans[2].classList.add(`status-${asset.status}`);
+    spans[2].textContent = asset.statusLabel;
+    spans[2].classList.add(`status-${asset.statusKey}`);
     return item;
   }));
 }
@@ -155,4 +165,17 @@ function renderAssetOptions() {
 
   elements.assetSelect.replaceChildren(new Option("Unassigned", ""), ...options);
   elements.assetSelect.value = current;
+}
+
+function renderUserOptions() {
+  const current = elements.requesterSelect.value;
+  const options = state.users.map((user) => {
+    const option = document.createElement("option");
+    option.value = String(user.id);
+    option.textContent = `${user.displayName} (${user.login})`;
+    return option;
+  });
+
+  elements.requesterSelect.replaceChildren(new Option("Select requester", ""), ...options);
+  elements.requesterSelect.value = current;
 }

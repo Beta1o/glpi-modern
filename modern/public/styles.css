@@ -26,7 +26,8 @@ body {
 
 button,
 input,
-select {
+select,
+textarea {
   font: inherit;
 }
 
@@ -220,7 +221,8 @@ th {
   text-align: center;
 }
 
-.priority-urgent,
+.priority-major,
+.priority-very-high,
 .status-maintenance {
   color: var(--red);
 }
@@ -229,7 +231,8 @@ th {
   color: var(--amber);
 }
 
-.status-online,
+.status-active,
+.status-new,
 .status-resolved {
   color: var(--green);
 }
@@ -247,13 +250,19 @@ label {
 }
 
 input,
-select {
+select,
+textarea {
   background: #ffffff;
   border: 1px solid var(--border);
   color: var(--text);
   min-height: 40px;
   padding: 8px 10px;
   width: 100%;
+}
+
+textarea {
+  min-height: 96px;
+  resize: vertical;
 }
 
 .asset-grid {

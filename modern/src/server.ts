@@ -2,13 +2,14 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { readFile } from "node:fs/promises";
 import { extname, isAbsolute, join, normalize, relative } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createStore } from "./store.ts";
+import { createLegacyGlpiStore } from "./legacy-glpi-store.ts";
 
 const host = process.env.HOST || "127.0.0.1";
 const port = Number.parseInt(process.env.PORT || "8090", 10);
 const publicDir = fileURLToPath(new URL("../public/", import.meta.url));
+const legacyPublicDir = fileURLToPath(new URL("../../public/", import.meta.url));
 const maxBodyBytes = 64 * 1024;
-const store = createStore();
+const store = await createLegacyGlpiStore();
 
 const securityHeaders = {
   "Content-Security-Policy": [
@@ -65,29 +66,61 @@ async function route(request: IncomingMessage, response: ServerResponse): Promis
   }
 
   if (url.pathname === "/readyz") {
+    await store.ping();
     return sendJson(request, response, 200, { status: "ready" });
   }
 
   if (url.pathname === "/api/v1/metrics" && method === "GET") {
-    return sendJson(request, response, 200, store.metrics());
+    return sendJson(request, response, 200, await store.metrics());
   }
 
   if (url.pathname === "/api/v1/assets" && method === "GET") {
-    return sendJson(request, response, 200, { data: store.listAssets() });
+    return sendJson(request, response, 200, { data: await store.listAssets() });
+  }
+
+  if (url.pathname === "/api/v1/users" && method === "GET") {
+    return sendJson(request, response, 200, { data: await store.listUsers() });
   }
 
   if (url.pathname === "/api/v1/tickets" && method === "GET") {
-    return sendJson(request, response, 200, { data: store.listTickets() });
+    return sendJson(request, response, 200, { data: await store.listTickets() });
   }
 
   if (url.pathname === "/api/v1/tickets" && method === "POST") {
     const input = await readJson(request);
-    const ticket = store.createTicket(input);
+    const ticket = await store.createTicket(input);
     return sendJson(request, response, 201, { data: ticket });
+  }
+
+  const ticketMatch = url.pathname.match(/^\/api\/v1\/tickets\/(\d+)$/);
+  if (ticketMatch && (method === "PATCH" || method === "PUT")) {
+    const input = await readJson(request);
+    const ticket = await store.updateTicket(Number(ticketMatch[1]), input);
+    return sendJson(request, response, 200, { data: ticket });
+  }
+
+  if (ticketMatch && method === "DELETE") {
+    if (url.searchParams.get("purge") === "1") {
+      await store.purgeTicket(Number(ticketMatch[1]));
+      return sendJson(request, response, 200, { data: { purged: true } });
+    }
+
+    await store.deleteTicket(Number(ticketMatch[1]));
+    return sendJson(request, response, 200, { data: { deleted: true } });
+  }
+
+  const ticketRestoreMatch = url.pathname.match(/^\/api\/v1\/tickets\/(\d+)\/restore$/);
+  if (ticketRestoreMatch && method === "POST") {
+    const ticket = await store.restoreTicket(Number(ticketRestoreMatch[1]));
+    return sendJson(request, response, 200, { data: ticket });
   }
 
   if (url.pathname.startsWith("/api/")) {
     throw httpError(404, "NOT_FOUND", "API route not found");
+  }
+
+  if (isLegacyPageRoute(url.pathname)) {
+    return serveStatic(request, response, "/index.html");
   }
 
   if (method !== "GET" && method !== "HEAD") {
@@ -95,6 +128,16 @@ async function route(request: IncomingMessage, response: ServerResponse): Promis
   }
 
   return serveStatic(request, response, url.pathname);
+}
+
+function isLegacyPageRoute(pathname: string): boolean {
+  return [
+    "/front/central.php",
+    "/front/ticket.php",
+    "/front/ticket.form.php",
+    "/front/computer.php",
+    "/front/user.php"
+  ].includes(pathname);
 }
 
 function setBaseHeaders(response: ServerResponse): void {
@@ -109,7 +152,10 @@ async function serveStatic(
   response: ServerResponse,
   pathname: string
 ): Promise<void> {
-  const filePath = resolvePublicPath(pathname);
+  const isLegacyAsset = pathname.startsWith("/legacy/");
+  const rootDir = isLegacyAsset ? legacyPublicDir : publicDir;
+  const requestPath = isLegacyAsset ? pathname.slice("/legacy".length) : pathname;
+  const filePath = resolveStaticPath(rootDir, requestPath);
   if (!filePath) {
     throw httpError(404, "NOT_FOUND", "File not found");
   }
@@ -136,7 +182,7 @@ async function serveStatic(
   }
 }
 
-function resolvePublicPath(pathname: string): string | null {
+function resolveStaticPath(rootDir: string, pathname: string): string | null {
   let decoded: string;
   try {
     decoded = decodeURIComponent(pathname);
@@ -146,8 +192,8 @@ function resolvePublicPath(pathname: string): string | null {
 
   const requestPath = decoded === "/" ? "/index.html" : decoded;
   const normalized = normalize(requestPath).replace(/^(\.\.(\/|\\|$))+/, "");
-  const fullPath = join(publicDir, normalized);
-  const diff = relative(publicDir, fullPath);
+  const fullPath = join(rootDir, normalized);
+  const diff = relative(rootDir, fullPath);
 
   if (diff.startsWith("..") || isAbsolute(diff)) {
     return null;
@@ -256,7 +302,8 @@ function getErrorCode(error: unknown, statusCode: number): string {
 }
 
 function shutdown(): void {
-  server.close(() => {
+  server.close(async () => {
+    await store.close();
     process.exit(0);
   });
 }

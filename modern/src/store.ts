@@ -1,139 +1,253 @@
-import { randomUUID } from "node:crypto";
-
-export type AssetStatus = "online" | "maintenance" | "retired";
-export type TicketPriority = "low" | "normal" | "high" | "urgent";
-export type TicketStatus = "open" | "assigned" | "resolved";
-
 export type Asset = {
   id: string;
+  legacyId: number;
+  itemType: "Computer" | "NetworkEquipment" | "Printer";
   tag: string;
   name: string;
   owner: string;
-  status: AssetStatus;
+  statusKey: string;
+  statusLabel: string;
   site: string;
-  updatedAt: string;
+  updatedAt: string | null;
 };
 
 export type Ticket = {
   id: string;
+  legacyId: number;
   number: string;
   title: string;
+  contentText: string;
   requester: string;
-  priority: TicketPriority;
-  status: TicketStatus;
+  assignee: string;
+  priorityValue: number;
+  priorityKey: string;
+  priorityLabel: string;
+  statusValue: number;
+  statusKey: string;
+  statusLabel: string;
+  typeValue: number;
+  typeLabel: string;
+  category: string;
   assetId: string | null;
-  createdAt: string;
+  createdAt: string | null;
+  updatedAt: string | null;
+};
+
+export type GlpiUser = {
+  id: number;
+  login: string;
+  displayName: string;
+};
+
+export type Metrics = {
+  assets: number;
+  onlineAssets: number;
+  openTickets: number;
+  urgentTickets: number;
+  users: number;
+  source: "legacy-glpi";
 };
 
 export type NewTicketInput = {
   title?: unknown;
-  requester?: unknown;
+  content?: unknown;
+  requesterId?: unknown;
   priority?: unknown;
+  urgency?: unknown;
+  impact?: unknown;
+  type?: unknown;
   assetId?: unknown;
 };
 
-const priorities: TicketPriority[] = ["low", "normal", "high", "urgent"];
+export type UpdateTicketInput = {
+  title?: unknown;
+  content?: unknown;
+  priority?: unknown;
+  urgency?: unknown;
+  impact?: unknown;
+  status?: unknown;
+  type?: unknown;
+};
 
-const seedAssets: Asset[] = [
-  {
-    id: "ast-laptop-017",
-    tag: "LTP-017",
-    name: "Finance laptop",
-    owner: "Finance",
-    status: "online",
-    site: "Riyadh HQ",
-    updatedAt: new Date(Date.now() - 11 * 60_000).toISOString()
-  },
-  {
-    id: "ast-router-002",
-    tag: "NET-002",
-    name: "Core router",
-    owner: "Network",
-    status: "maintenance",
-    site: "Data room",
-    updatedAt: new Date(Date.now() - 38 * 60_000).toISOString()
-  },
-  {
-    id: "ast-printer-044",
-    tag: "PRN-044",
-    name: "Support printer",
-    owner: "Support",
-    status: "online",
-    site: "Service desk",
-    updatedAt: new Date(Date.now() - 74 * 60_000).toISOString()
-  }
-];
+export type NormalizedTicketInput = {
+  title: string;
+  content: string;
+  requesterId: number;
+  priority: number;
+  urgency: number;
+  impact: number;
+  type: number;
+  asset: ParsedAssetId | null;
+};
 
-const seedTickets: Ticket[] = [
-  {
-    id: "tck-1001",
-    number: "INC-1001",
-    title: "VPN access fails for finance team",
-    requester: "Amina",
-    priority: "high",
-    status: "assigned",
-    assetId: "ast-laptop-017",
-    createdAt: new Date(Date.now() - 28 * 60_000).toISOString()
-  },
-  {
-    id: "tck-1002",
-    number: "INC-1002",
-    title: "Printer queue is blocked",
-    requester: "Support floor",
-    priority: "normal",
-    status: "open",
-    assetId: "ast-printer-044",
-    createdAt: new Date(Date.now() - 52 * 60_000).toISOString()
-  }
-];
+export type NormalizedTicketPatch = {
+  title?: string;
+  content?: string;
+  priority?: number;
+  urgency?: number;
+  impact?: number;
+  status?: number;
+  type?: number;
+};
 
-export function createStore() {
-  const assets = new Map(seedAssets.map((asset) => [asset.id, asset]));
-  const tickets = new Map(seedTickets.map((ticket) => [ticket.id, ticket]));
+export type ParsedAssetId = {
+  itemType: "Computer" | "NetworkEquipment" | "Printer";
+  legacyId: number;
+};
 
+export type Store = {
+  listAssets(): Promise<Asset[]>;
+  listTickets(): Promise<Ticket[]>;
+  listUsers(): Promise<GlpiUser[]>;
+  createTicket(input: NewTicketInput): Promise<Ticket>;
+  updateTicket(id: number, input: UpdateTicketInput): Promise<Ticket>;
+  deleteTicket(id: number): Promise<void>;
+  restoreTicket(id: number): Promise<Ticket>;
+  purgeTicket(id: number): Promise<void>;
+  metrics(): Promise<Metrics>;
+  ping(): Promise<void>;
+  close(): Promise<void>;
+};
+
+const statusMap = new Map([
+  [1, ["new", "New"]],
+  [2, ["assigned", "Assigned"]],
+  [3, ["planned", "Planned"]],
+  [4, ["waiting", "Waiting"]],
+  [5, ["solved", "Solved"]],
+  [6, ["closed", "Closed"]]
+] as const);
+
+const priorityMap = new Map([
+  [1, ["very-low", "Very low"]],
+  [2, ["low", "Low"]],
+  [3, ["medium", "Medium"]],
+  [4, ["high", "High"]],
+  [5, ["very-high", "Very high"]],
+  [6, ["major", "Major"]]
+] as const);
+
+const typeMap = new Map([
+  [1, "Incident"],
+  [2, "Request"]
+] as const);
+
+export function mapGlpiStatus(value: unknown): Pick<Ticket, "statusValue" | "statusKey" | "statusLabel"> {
+  const statusValue = normalizeScale(value, 1, 6, 1);
+  const [statusKey, statusLabel] = statusMap.get(statusValue) || ["unknown", "Unknown"];
+  return { statusValue, statusKey, statusLabel };
+}
+
+export function mapGlpiPriority(value: unknown): Pick<Ticket, "priorityValue" | "priorityKey" | "priorityLabel"> {
+  const priorityValue = normalizeScale(value, 1, 6, 3);
+  const [priorityKey, priorityLabel] = priorityMap.get(priorityValue) || ["medium", "Medium"];
+  return { priorityValue, priorityKey, priorityLabel };
+}
+
+export function mapGlpiTicketType(value: unknown): Pick<Ticket, "typeValue" | "typeLabel"> {
+  const typeValue = normalizeScale(value, 1, 2, 1);
+  return { typeValue, typeLabel: typeMap.get(typeValue) || "Incident" };
+}
+
+export function normalizeTicketInput(input: NewTicketInput): NormalizedTicketInput {
   return {
-    listAssets(): Asset[] {
-      return [...assets.values()].sort((left, right) => left.tag.localeCompare(right.tag));
-    },
-
-    listTickets(): Ticket[] {
-      return [...tickets.values()].sort((left, right) => right.createdAt.localeCompare(left.createdAt));
-    },
-
-    createTicket(input: NewTicketInput): Ticket {
-      const title = requireText(input.title, "title", 4, 160);
-      const requester = requireText(input.requester, "requester", 2, 80);
-      const priority = normalizePriority(input.priority);
-      const assetId = normalizeAssetId(input.assetId, assets);
-      const nextNumber = `INC-${1000 + tickets.size + 1}`;
-      const ticket: Ticket = {
-        id: `tck-${randomUUID()}`,
-        number: nextNumber,
-        title,
-        requester,
-        priority,
-        status: "open",
-        assetId,
-        createdAt: new Date().toISOString()
-      };
-
-      tickets.set(ticket.id, ticket);
-      return ticket;
-    },
-
-    metrics() {
-      const allAssets = [...assets.values()];
-      const allTickets = [...tickets.values()];
-
-      return {
-        assets: allAssets.length,
-        onlineAssets: allAssets.filter((asset) => asset.status === "online").length,
-        openTickets: allTickets.filter((ticket) => ticket.status !== "resolved").length,
-        urgentTickets: allTickets.filter((ticket) => ticket.priority === "urgent").length,
-        meanAssignmentMinutes: 14
-      };
-    }
+    title: requireText(input.title, "title", 4, 160),
+    content: optionalText(input.content, 0, 65_000),
+    requesterId: requirePositiveInteger(input.requesterId, "requesterId"),
+    priority: normalizeScale(input.priority, 1, 6, 3),
+    urgency: normalizeScale(input.urgency, 1, 5, normalizeScale(input.priority, 1, 5, 3)),
+    impact: normalizeScale(input.impact, 1, 5, normalizeScale(input.priority, 1, 5, 3)),
+    type: normalizeScale(input.type, 1, 2, 1),
+    asset: parseAssetId(input.assetId)
   };
+}
+
+export function normalizeTicketPatch(input: UpdateTicketInput): NormalizedTicketPatch {
+  const patch: NormalizedTicketPatch = {};
+
+  if (input.title !== undefined) {
+    patch.title = requireText(input.title, "title", 4, 160);
+  }
+
+  if (input.content !== undefined) {
+    patch.content = optionalText(input.content, 0, 65_000);
+  }
+
+  if (input.priority !== undefined) {
+    patch.priority = normalizeScale(input.priority, 1, 6, 3);
+  }
+
+  if (input.urgency !== undefined) {
+    patch.urgency = normalizeScale(input.urgency, 1, 5, 3);
+  }
+
+  if (input.impact !== undefined) {
+    patch.impact = normalizeScale(input.impact, 1, 5, 3);
+  }
+
+  if (input.status !== undefined) {
+    patch.status = normalizeScale(input.status, 1, 6, 1);
+  }
+
+  if (input.type !== undefined) {
+    patch.type = normalizeScale(input.type, 1, 2, 1);
+  }
+
+  return patch;
+}
+
+export function parseAssetId(value: unknown): ParsedAssetId | null {
+  if (typeof value !== "string" || value.trim() === "") {
+    return null;
+  }
+
+  const [itemType, rawId] = value.trim().split(":");
+  if (!["Computer", "NetworkEquipment", "Printer"].includes(itemType)) {
+    throw validationError("assetId item type is not supported");
+  }
+
+  const legacyId = Number.parseInt(rawId || "", 10);
+  if (!Number.isInteger(legacyId) || legacyId <= 0) {
+    throw validationError("assetId must include a positive legacy id");
+  }
+
+  return { itemType: itemType as ParsedAssetId["itemType"], legacyId };
+}
+
+export function stripHtml(value: unknown): string {
+  if (typeof value !== "string") {
+    return "";
+  }
+
+  return value
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .trim();
+}
+
+export function displayName(parts: {
+  firstname?: string | null;
+  realname?: string | null;
+  name?: string | null;
+  fallback?: string | null;
+}): string {
+  const fullName = [parts.firstname, parts.realname]
+    .map((part) => (part || "").trim())
+    .filter(Boolean)
+    .join(" ");
+
+  return fullName || parts.name?.trim() || parts.fallback?.trim() || "Unassigned";
+}
+
+export function validationError(message: string): Error & { statusCode: number; code: string } {
+  const error = new Error(message) as Error & { statusCode: number; code: string };
+  error.statusCode = 400;
+  error.code = "VALIDATION_ERROR";
+  return error;
 }
 
 function requireText(value: unknown, field: string, min: number, max: number): string {
@@ -149,30 +263,37 @@ function requireText(value: unknown, field: string, min: number, max: number): s
   return normalized;
 }
 
-function normalizePriority(value: unknown): TicketPriority {
-  if (typeof value !== "string" || !priorities.includes(value as TicketPriority)) {
-    return "normal";
+function optionalText(value: unknown, min: number, max: number): string {
+  if (value === undefined || value === null) {
+    return "";
   }
 
-  return value as TicketPriority;
-}
-
-function normalizeAssetId(value: unknown, assets: Map<string, Asset>): string | null {
-  if (typeof value !== "string" || value.trim() === "") {
-    return null;
+  if (typeof value !== "string") {
+    throw validationError("content must be text");
   }
 
   const normalized = value.trim();
-  if (!assets.has(normalized)) {
-    throw validationError("assetId does not exist");
+  if (normalized.length < min || normalized.length > max) {
+    throw validationError(`content must be ${min}-${max} characters`);
   }
 
   return normalized;
 }
 
-function validationError(message: string): Error & { statusCode: number; code: string } {
-  const error = new Error(message) as Error & { statusCode: number; code: string };
-  error.statusCode = 400;
-  error.code = "VALIDATION_ERROR";
-  return error;
+function requirePositiveInteger(value: unknown, field: string): number {
+  const parsed = typeof value === "number" ? value : Number.parseInt(String(value || ""), 10);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw validationError(`${field} must be a positive integer`);
+  }
+
+  return parsed;
+}
+
+function normalizeScale(value: unknown, min: number, max: number, fallback: number): number {
+  const parsed = typeof value === "number" ? value : Number.parseInt(String(value || ""), 10);
+  if (!Number.isInteger(parsed) || parsed < min || parsed > max) {
+    return fallback;
+  }
+
+  return parsed;
 }
