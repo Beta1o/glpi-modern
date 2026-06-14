@@ -93,7 +93,9 @@ class LegacyGlpiStore implements Store {
   }
 
   async listTickets(): Promise<ReturnType<typeof mapTicketRow>[]> {
-    const [rows] = await this.pool.query<TicketRow[]>(`${ticketQuery} ORDER BY t.id DESC LIMIT 200`);
+    const [rows] = await this.pool.query<TicketRow[]>(
+      `${ticketQuery} AND t.is_deleted = 0 ORDER BY t.id DESC LIMIT 200`
+    );
     return rows.map(mapTicketRow);
   }
 
@@ -545,7 +547,7 @@ const ticketQuery = `
   LEFT JOIN (${actorAssigneeQuery}) assignee ON assignee.tickets_id = t.id
   LEFT JOIN (${ticketAssetQuery}) linked ON linked.tickets_id = t.id
   LEFT JOIN glpi_itilcategories cat ON cat.id = t.itilcategories_id
-  WHERE t.is_deleted = 0
+  WHERE 1 = 1
 `;
 
 const assetQuery = `

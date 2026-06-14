@@ -1,0 +1,31 @@
+/* Compatibility glue for the Node-rendered GLPI shell. */
+.search-container {
+  min-width: 0;
+}
+
+.search_page {
+  align-items: flex-start;
+}
+
+#menu_modern_glpi .dropdown-menu.show {
+  display: block;
+}
+
+@media (min-width: 992px) {
+  #menu_modern_glpi .dropdown-menu {
+    position: static;
+    transform: none;
+  }
+}
+
+.ticket-main-form .card {
+  margin-bottom: 0;
+}
+
+.ticket-main-form textarea {
+  min-height: 10rem;
+}
+
+.search-results-count {
+  color: var(--tblr-muted);
+}

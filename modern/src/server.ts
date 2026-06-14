@@ -15,6 +15,8 @@ import {
 const host = process.env.HOST || "127.0.0.1";
 const port = Number.parseInt(process.env.PORT || "8090", 10);
 const publicDir = fileURLToPath(new URL("../public/", import.meta.url));
+const legacyPublicDir = fileURLToPath(new URL("../../public/", import.meta.url));
+const legacyJsDir = fileURLToPath(new URL("../../js/", import.meta.url));
 const maxBodyBytes = 64 * 1024;
 const store = await createLegacyGlpiStore();
 
@@ -28,7 +30,7 @@ const securityHeaders = {
     "img-src 'self' data:",
     "object-src 'none'",
     "script-src 'self'",
-    "style-src 'self'"
+    "style-src 'self' 'unsafe-inline'"
   ].join("; "),
   "Cross-Origin-Opener-Policy": "same-origin",
   "Cross-Origin-Resource-Policy": "same-origin",
@@ -40,11 +42,19 @@ const securityHeaders = {
 
 const mimeTypes = new Map([
   [".css", "text/css; charset=utf-8"],
+  [".gif", "image/gif"],
   [".html", "text/html; charset=utf-8"],
   [".ico", "image/x-icon"],
+  [".jpg", "image/jpeg"],
+  [".jpeg", "image/jpeg"],
   [".js", "text/javascript; charset=utf-8"],
   [".json", "application/json; charset=utf-8"],
-  [".svg", "image/svg+xml"]
+  [".map", "application/json; charset=utf-8"],
+  [".png", "image/png"],
+  [".svg", "image/svg+xml"],
+  [".ttf", "font/ttf"],
+  [".woff", "font/woff"],
+  [".woff2", "font/woff2"]
 ]);
 
 const server = createServer(async (request, response) => {
@@ -96,6 +106,10 @@ async function route(request: IncomingMessage, response: ServerResponse): Promis
   if (url.pathname === "/readyz") {
     await store.ping();
     return sendJson(request, response, 200, { status: "ready" });
+  }
+
+  if (url.pathname === "/front/css.php" && method === "GET") {
+    return serveGeneratedCss(request, response, url);
   }
 
   if (url.pathname === "/api/v1/metrics" && method === "GET") {
@@ -157,6 +171,11 @@ async function route(request: IncomingMessage, response: ServerResponse): Promis
 
   if (method !== "GET" && method !== "HEAD") {
     throw httpError(405, "METHOD_NOT_ALLOWED", "Method not allowed");
+  }
+
+  const legacyStaticRoot = getLegacyStaticRoot(url.pathname);
+  if (legacyStaticRoot) {
+    return serveStaticFrom(request, response, legacyStaticRoot.root, legacyStaticRoot.pathname);
   }
 
   return serveStatic(request, response, url.pathname);
@@ -255,7 +274,16 @@ async function serveStatic(
   response: ServerResponse,
   pathname: string
 ): Promise<void> {
-  const filePath = resolveStaticPath(publicDir, pathname);
+  return serveStaticFrom(request, response, publicDir, pathname);
+}
+
+async function serveStaticFrom(
+  request: IncomingMessage,
+  response: ServerResponse,
+  rootDir: string,
+  pathname: string
+): Promise<void> {
+  const filePath = resolveStaticPath(rootDir, pathname);
   if (!filePath) {
     throw httpError(404, "NOT_FOUND", "File not found");
   }
@@ -280,6 +308,36 @@ async function serveStatic(
     }
     throw error;
   }
+}
+
+function getLegacyStaticRoot(pathname: string): { root: string; pathname: string } | null {
+  if (/^\/(?:lib|pics|build|css|sound)\//.test(pathname)) {
+    return { root: legacyPublicDir, pathname };
+  }
+
+  if (pathname.startsWith("/js/")) {
+    return { root: legacyJsDir, pathname: pathname.slice(3) };
+  }
+
+  return null;
+}
+
+async function serveGeneratedCss(
+  request: IncomingMessage,
+  response: ServerResponse,
+  url: URL
+): Promise<void> {
+  const cssFile = new Map([
+    ["css/glpi.scss", "/generated-css/glpi.css"],
+    ["css/core_palettes.scss", "/generated-css/core_palettes.css"],
+    ["css/standalone/dashboard.scss", "/generated-css/dashboard.css"]
+  ]).get(url.searchParams.get("file") || "");
+
+  if (!cssFile) {
+    throw httpError(404, "NOT_FOUND", "Generated stylesheet not found");
+  }
+
+  return serveStaticFrom(request, response, publicDir, cssFile);
 }
 
 function resolveStaticPath(rootDir: string, pathname: string): string | null {

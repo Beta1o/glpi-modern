@@ -53,6 +53,20 @@ compatibility layer:
 - health checks at `/healthz` and `/readyz`
 
 These routes must read and write the installed legacy GLPI database tables first.
-Next work is to replace the temporary modern-looking UI with GLPI's original
-screen structure and styling. Page coverage is tracked in
+The temporary modern-looking UI has been replaced for the first old routes with
+GLPI's original static asset stack, generated CSS, shell classes, search card
+classes, and ticket tab classes served by the Node runtime. Page coverage is tracked in
 [`LEGACY_PAGE_INVENTORY.md`](LEGACY_PAGE_INVENTORY.md).
+
+Current Node old-route coverage:
+
+- `/` renders the GLPI anonymous login layout and posts to `/front/login.php`.
+- `/front/central.php` renders in the GLPI vertical shell.
+- `/front/ticket.php` renders a GLPI-style search page and table.
+- `/front/ticket.form.php` supports create, update, trash, restore, and purge
+  against the GLPI ticket tables.
+- `/front/computer.php` and `/front/user.php` render GLPI-style search pages.
+
+Remaining first-slice gaps are full GLPI authentication/password validation,
+full AJAX widgets, rich text/timeline behavior, saved searches, bulk actions,
+permissions, and every GLPI module that has not yet been ported.
