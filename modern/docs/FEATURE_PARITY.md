@@ -66,6 +66,10 @@ Current Node old-route coverage:
 - `/front/ticket.form.php` supports create, update, trash, restore, and purge
   against the GLPI ticket tables.
 - `/front/computer.php` and `/front/user.php` render GLPI-style search pages.
+- The full local GLPI schema is captured in
+  [`DATABASE_MIGRATION.md`](DATABASE_MIGRATION.md) and
+  `modern/sql/glpi-legacy-schema.sql`; modern modules must map the old schema
+  before adding any replacement schema.
 
 Remaining first-slice gaps are full GLPI authentication/password validation,
 full AJAX widgets, rich text/timeline behavior, saved searches, bulk actions,

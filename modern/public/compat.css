@@ -29,3 +29,29 @@
 .search-results-count {
   color: var(--tblr-muted);
 }
+
+.glpi-modal-backdrop {
+  align-items: center;
+  background: rgba(15, 23, 42, 0.45);
+  bottom: 0;
+  display: flex;
+  justify-content: center;
+  left: 0;
+  position: fixed;
+  right: 0;
+  top: 0;
+  z-index: 1055;
+}
+
+.glpi-modal-backdrop .modal {
+  display: block;
+  position: static;
+}
+
+.glpi-modal-backdrop .modal-dialog {
+  margin: 1.75rem auto;
+}
+
+.legacy-module-page .empty-icon {
+  font-size: 3rem;
+}

@@ -4,9 +4,14 @@ import { extname, isAbsolute, join, normalize, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createLegacyGlpiStore } from "./legacy-glpi-store.ts";
 import {
+  renderCommonTabPartial,
   renderCentralPage,
   renderComputerListPage,
+  renderDisplayPreferencePage,
+  renderGenericLegacyPage,
   renderLoginPage,
+  renderMassiveActionPartial,
+  renderSavedSearchPartial,
   renderTicketFormPage,
   renderTicketListPage,
   renderUserListPage
@@ -112,6 +117,35 @@ async function route(request: IncomingMessage, response: ServerResponse): Promis
     return serveGeneratedCss(request, response, url);
   }
 
+  if (url.pathname === "/ajax/savedsearch.php" && method === "GET") {
+    return sendHtml(request, response, 200, renderSavedSearchPartial(url.searchParams.get("itemtype") || "Ticket"));
+  }
+
+  if (url.pathname === "/ajax/common.tabs.php" && method === "GET") {
+    return sendHtml(
+      request,
+      response,
+      200,
+      renderCommonTabPartial(
+        url.searchParams.get("_glpi_tab") || "",
+        url.searchParams.get("_itemtype") || "Item",
+        url.searchParams.get("id") || ""
+      )
+    );
+  }
+
+  if (url.pathname === "/front/displaypreference.form.php" && method === "GET") {
+    return sendHtml(request, response, 200, renderDisplayPreferencePage(url.searchParams.get("itemtype") || "Item"));
+  }
+
+  if (url.pathname === "/front/massiveaction.php" && (method === "GET" || method === "POST")) {
+    return sendHtml(request, response, 200, renderMassiveActionPartial());
+  }
+
+  if (url.pathname === "/front/report.dynamic.php" && method === "GET") {
+    return sendText(request, response, 200, `${url.searchParams.get("item_type") || "Item"} export is registered in Node compatibility mode.\n`);
+  }
+
   if (url.pathname === "/api/v1/metrics" && method === "GET") {
     return sendJson(request, response, 200, await store.metrics());
   }
@@ -167,6 +201,14 @@ async function route(request: IncomingMessage, response: ServerResponse): Promis
     }
 
     return serveLegacyPage(request, response, url);
+  }
+
+  if (isGenericLegacyRoute(url.pathname)) {
+    if (!isLoggedIn(request)) {
+      return redirect(response, `/?redirect=${encodeURIComponent(url.pathname + url.search)}`);
+    }
+
+    return sendHtml(request, response, 200, renderGenericLegacyPage(url.pathname));
   }
 
   if (method !== "GET" && method !== "HEAD") {
@@ -255,6 +297,18 @@ function isLegacyPageRoute(pathname: string): boolean {
     "/front/computer.php",
     "/front/user.php"
   ].includes(pathname);
+}
+
+function isGenericLegacyRoute(pathname: string): boolean {
+  if (["/front/login.php", "/front/logout.php", "/front/css.php", "/front/cron.php"].includes(pathname)) {
+    return false;
+  }
+
+  if (/^\/front\/[a-z0-9_.\/-]+\.php$/i.test(pathname)) {
+    return true;
+  }
+
+  return ["/ServiceCatalog", "/Inventory/Configuration"].includes(pathname);
 }
 
 function setBaseHeaders(response: ServerResponse): void {
@@ -445,6 +499,27 @@ function sendHtml(
     "Cache-Control": "no-store",
     "Content-Length": body.byteLength,
     "Content-Type": "text/html; charset=utf-8"
+  });
+
+  if (request.method === "HEAD") {
+    response.end();
+    return;
+  }
+
+  response.end(body);
+}
+
+function sendText(
+  request: IncomingMessage,
+  response: ServerResponse,
+  statusCode: number,
+  text: string
+): void {
+  const body = Buffer.from(text);
+  response.writeHead(statusCode, {
+    "Cache-Control": "no-store",
+    "Content-Length": body.byteLength,
+    "Content-Type": "text/plain; charset=utf-8"
   });
 
   if (request.method === "HEAD") {
